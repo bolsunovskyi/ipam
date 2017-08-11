@@ -54,9 +54,9 @@ func (i *IPAM) getFreePoolBySpace(space string) (*pool, error) {
 			if !p.taken {
 				i.globalPools[idx].taken = true
 
-				if err := i.globalPools[idx].bridgeUp(i.verbose); err != nil {
-					return nil, err
-				}
+				//if err := i.globalPools[idx].bridgeUp(i.verbose); err != nil {
+				//	return nil, err
+				//}
 
 				return &i.globalPools[idx], nil
 			}
@@ -67,9 +67,9 @@ func (i *IPAM) getFreePoolBySpace(space string) (*pool, error) {
 		if !p.taken {
 			i.localPools[idx].taken = true
 
-			if err := i.localPools[idx].bridgeUp(i.verbose); err != nil {
-				return nil, err
-			}
+			//if err := i.localPools[idx].bridgeUp(i.verbose); err != nil {
+			//	return nil, err
+			//}
 
 			return &i.localPools[idx], nil
 		}
@@ -84,7 +84,10 @@ func (i *IPAM) RequestPool(rq *ipam.RequestPoolRequest) (*ipam.RequestPoolRespon
 		log.Printf("%+v\n", rq)
 	}
 
-	data := map[string]string{"DNS": "8.8.8.8"}
+	data := map[string]string{
+		"DNS": "8.8.8.8",
+		//"com.docker.network.gateway": "0.0.0.0/0",
+	}
 
 	if rq.AddressSpace != "" && rq.Pool != "" {
 		if rq.AddressSpace == globalSpace {
@@ -95,9 +98,9 @@ func (i *IPAM) RequestPool(rq *ipam.RequestPoolRequest) (*ipam.RequestPoolRespon
 					}
 					i.globalPools[idx].taken = true
 
-					if err := i.globalPools[idx].bridgeUp(i.verbose); err != nil {
-						return nil, err
-					}
+					//if err := i.globalPools[idx].bridgeUp(i.verbose); err != nil {
+					//	return nil, err
+					//}
 
 					return &ipam.RequestPoolResponse{
 						Pool:   rq.Pool,
@@ -116,9 +119,9 @@ func (i *IPAM) RequestPool(rq *ipam.RequestPoolRequest) (*ipam.RequestPoolRespon
 
 					i.localPools[idx].taken = true
 
-					if err := i.localPools[idx].bridgeUp(i.verbose); err != nil {
-						return nil, err
-					}
+					//if err := i.localPools[idx].bridgeUp(i.verbose); err != nil {
+					//	return nil, err
+					//}
 
 					return &ipam.RequestPoolResponse{
 						Pool:   rq.Pool,
@@ -151,8 +154,8 @@ func (i *IPAM) ReleasePool(rq *ipam.ReleasePoolRequest) error {
 	for idx, p := range i.globalPools {
 		if p.pid == rq.PoolID {
 			i.globalPools[idx].taken = false
-			(*i.globalPools[idx].link).DeleteLink()
-			(*i.globalPools[idx].bridge).DeleteLink()
+			//(*i.globalPools[idx].link).DeleteLink()
+			//(*i.globalPools[idx].bridge).DeleteLink()
 			return nil
 		}
 	}
@@ -160,8 +163,8 @@ func (i *IPAM) ReleasePool(rq *ipam.ReleasePoolRequest) error {
 	for idx, p := range i.localPools {
 		if p.pid == rq.PoolID {
 			i.localPools[idx].taken = false
-			(*i.localPools[idx].link).DeleteLink()
-			(*i.localPools[idx].bridge).DeleteLink()
+			//(*i.localPools[idx].link).DeleteLink()
+			//(*i.localPools[idx].bridge).DeleteLink()
 			return nil
 		}
 	}
@@ -201,6 +204,9 @@ func (i *IPAM) RequestAddress(rq *ipam.RequestAddressRequest) (*ipam.RequestAddr
 			return &ipam.RequestAddressResponse{
 				Address: addr,
 			}, nil
+			//return &ipam.RequestAddressResponse{
+			//	Address: "172.38.0.0/16",
+			//}, nil
 		}
 	}
 
@@ -218,7 +224,7 @@ func (i *IPAM) RequestAddress(rq *ipam.RequestAddressRequest) (*ipam.RequestAddr
 
 	return &ipam.RequestAddressResponse{
 		//Data:    map[string]string{},
-		Address: ip,
+		Address: ip + "/24",
 	}, nil
 }
 

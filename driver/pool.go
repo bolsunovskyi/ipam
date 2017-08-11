@@ -105,7 +105,7 @@ func makePool(verbose bool, value, pid string) (*pool, error) {
 		value:   value,
 		pid:     pid,
 		taken:   false,
-		gateway: gateWay.String(),
+		gateway: gateWay.String() + "/32",
 	}
 
 	min := networkIPInc(networkIP)
