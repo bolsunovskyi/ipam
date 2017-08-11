@@ -3,6 +3,7 @@ package driver
 import (
 	"encoding/binary"
 	"fmt"
+	"log"
 	"net"
 
 	"github.com/milosgajdos83/tenus"
@@ -21,8 +22,9 @@ type pool struct {
 }
 
 func (p *pool) bridgeUp(verbose bool) error {
-	//link, err := tenus.NewLink(p.pid)
+	//link, err := tenus.NewLink("l" + p.pid)
 	link, err := tenus.NewLinkFrom("eth0")
+	//link, err := tenus.NewLinkFrom("docker0")
 	if err != nil {
 		return err
 	}
@@ -55,21 +57,17 @@ func (p *pool) bridgeUp(verbose bool) error {
 		return err
 	}
 
-	//gateway := networkIPInc(brIp)
-
 	if verbose {
-		fmt.Printf("Init bridge, ip: %v, ipNet: %v\n", brIp, brIpNet)
+		log.Printf("Init bridge, ip: %v, ipNet: %v\n", brIp, brIpNet)
 	}
 
 	if err := br.SetLinkIp(brIp, brIpNet); err != nil {
-		fmt.Println(err)
+		return err
 	}
-
-	//br.
 
 	p.gateway = brIp.String()
 	if err = br.SetLinkUp(); err != nil {
-		fmt.Println(err)
+		return err
 	}
 
 	if err := br.AddSlaveIfc(link.NetInterface()); err != nil {
