@@ -2,27 +2,112 @@ package driver
 
 import (
 	"encoding/binary"
+	"fmt"
 	"net"
+
+	"github.com/milosgajdos83/tenus"
 )
 
+const result = "%-10s %v\n"
+
 type pool struct {
-	ips   []net.IP
-	pid   string
-	value string
-	taken bool
+	ips     []net.IP
+	pid     string
+	value   string
+	taken   bool
+	gateway string
+	bridge  *tenus.Bridger
+	link    *tenus.Linker
 }
 
-func makePool(value, pid string) (*pool, error) {
-	_, ipnet, err := net.ParseCIDR(value)
+func (p *pool) bridgeUp(verbose bool) error {
+	//link, err := tenus.NewLink(p.pid)
+	link, err := tenus.NewLinkFrom("eth0")
+	if err != nil {
+		return err
+	}
+
+	//lIp, lIpNet, err := net.ParseCIDR(p.value)
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//if err := link.SetLinkIp(lIp, lIpNet); err != nil {
+	//	return err
+	//}
+
+	//if verbose {
+	//	fmt.Printf("Init bridge, ip: %v, ipNet: %v\n", lIp, lIpNet)
+	//}
+
+	//p.gateway = lIp.String()
+
+	p.link = &link
+
+	br, err := tenus.NewBridgeWithName(p.pid)
+	//br, err := tenus.NewBridgeWithName()
+	if err != nil {
+		return err
+	}
+
+	brIp, brIpNet, err := net.ParseCIDR(p.value)
+	if err != nil {
+		return err
+	}
+
+	//gateway := networkIPInc(brIp)
+
+	if verbose {
+		fmt.Printf("Init bridge, ip: %v, ipNet: %v\n", brIp, brIpNet)
+	}
+
+	if err := br.SetLinkIp(brIp, brIpNet); err != nil {
+		fmt.Println(err)
+	}
+
+	//br.
+
+	p.gateway = brIp.String()
+	if err = br.SetLinkUp(); err != nil {
+		fmt.Println(err)
+	}
+
+	if err := br.AddSlaveIfc(link.NetInterface()); err != nil {
+		return err
+	}
+
+	if err = link.SetLinkUp(); err != nil {
+		return err
+	}
+
+	p.bridge = &br
+
+	return nil
+}
+
+func makePool(verbose bool, value, pid string) (*pool, error) {
+	ip, ipnet, err := net.ParseCIDR(value)
 	if err != nil {
 		return nil, err
 	}
-	networkIP, broadcastIP, _, _ := networkRange(ipnet)
+	networkIP, broadcastIP, wildcardIP, networkMask := networkRange(ipnet)
+	gateWay := networkIPInc(ip)
+
+	if verbose {
+		fmt.Printf(result, "Address:", ip)
+		fmt.Printf(result, "Wildcard:", wildcardIP)
+		fmt.Printf(result, "Network:", ipnet.IP)
+		fmt.Printf(result, "NetworkIP:", networkIP)
+		fmt.Printf(result, "Broadcast:", broadcastIP)
+		fmt.Printf(result, "NetworkMask", networkMask)
+		fmt.Printf(result, "Gateway", gateWay)
+	}
 
 	p := pool{
-		value: value,
-		pid:   pid,
-		taken: false,
+		value:   value,
+		pid:     pid,
+		taken:   false,
+		gateway: gateWay.String(),
 	}
 
 	min := networkIPInc(networkIP)

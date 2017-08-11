@@ -12,9 +12,13 @@ import (
 	"github.com/docker/go-plugins-helpers/ipam"
 )
 
+//RequestAddressType:com.docker.network.gateway
+
 const (
-	globalSpace = "alpha_global"
-	localSpace  = "beta_local"
+	globalSpace        = "alpha_global"
+	localSpace         = "beta_local"
+	gatewayRequest     = "com.docker.network.gateway"
+	requestAddressType = "RequestAddressType"
 )
 
 type IPAM struct {
@@ -49,6 +53,11 @@ func (i *IPAM) getFreePoolBySpace(space string) (*pool, error) {
 		for idx, p := range i.globalPools {
 			if !p.taken {
 				i.globalPools[idx].taken = true
+
+				if err := i.globalPools[idx].bridgeUp(i.verbose); err != nil {
+					return nil, err
+				}
+
 				return &i.globalPools[idx], nil
 			}
 		}
@@ -57,7 +66,12 @@ func (i *IPAM) getFreePoolBySpace(space string) (*pool, error) {
 	for idx, p := range i.localPools {
 		if !p.taken {
 			i.localPools[idx].taken = true
-			return &i.globalPools[idx], nil
+
+			if err := i.localPools[idx].bridgeUp(i.verbose); err != nil {
+				return nil, err
+			}
+
+			return &i.localPools[idx], nil
 		}
 	}
 
@@ -76,7 +90,15 @@ func (i *IPAM) RequestPool(rq *ipam.RequestPoolRequest) (*ipam.RequestPoolRespon
 		if rq.AddressSpace == globalSpace {
 			for idx, p := range i.globalPools {
 				if p.value == rq.Pool {
+					if i.verbose {
+						log.Println("global pool found")
+					}
 					i.globalPools[idx].taken = true
+
+					if err := i.globalPools[idx].bridgeUp(i.verbose); err != nil {
+						return nil, err
+					}
+
 					return &ipam.RequestPoolResponse{
 						Pool:   rq.Pool,
 						PoolID: p.pid,
@@ -87,8 +109,17 @@ func (i *IPAM) RequestPool(rq *ipam.RequestPoolRequest) (*ipam.RequestPoolRespon
 		}
 		if rq.AddressSpace == localSpace {
 			for idx, p := range i.localPools {
-				i.localPools[idx].taken = true
 				if p.value == rq.Pool {
+					if i.verbose {
+						log.Println("local pool found")
+					}
+
+					i.localPools[idx].taken = true
+
+					if err := i.localPools[idx].bridgeUp(i.verbose); err != nil {
+						return nil, err
+					}
+
 					return &ipam.RequestPoolResponse{
 						Pool:   rq.Pool,
 						PoolID: p.pid,
@@ -120,6 +151,8 @@ func (i *IPAM) ReleasePool(rq *ipam.ReleasePoolRequest) error {
 	for idx, p := range i.globalPools {
 		if p.pid == rq.PoolID {
 			i.globalPools[idx].taken = false
+			(*i.globalPools[idx].link).DeleteLink()
+			(*i.globalPools[idx].bridge).DeleteLink()
 			return nil
 		}
 	}
@@ -127,11 +160,29 @@ func (i *IPAM) ReleasePool(rq *ipam.ReleasePoolRequest) error {
 	for idx, p := range i.localPools {
 		if p.pid == rq.PoolID {
 			i.localPools[idx].taken = false
+			(*i.localPools[idx].link).DeleteLink()
+			(*i.localPools[idx].bridge).DeleteLink()
 			return nil
 		}
 	}
 
 	return nil
+}
+
+func (i *IPAM) getGatewayByPoolID(pid string) (string, error) {
+	for _, p := range i.globalPools {
+		if p.pid == pid {
+			return p.gateway, nil
+		}
+	}
+
+	for _, p := range i.localPools {
+		if p.pid == pid {
+			return p.gateway, nil
+		}
+	}
+
+	return "", fmt.Errorf("Gateway for pool %s not found\n", pid)
 }
 
 func (i *IPAM) RequestAddress(rq *ipam.RequestAddressRequest) (*ipam.RequestAddressResponse, error) {
@@ -140,10 +191,23 @@ func (i *IPAM) RequestAddress(rq *ipam.RequestAddressRequest) (*ipam.RequestAddr
 		log.Printf("%+v\n", rq)
 	}
 
+	if t, ok := rq.Options[requestAddressType]; ok {
+		switch t {
+		case gatewayRequest:
+			addr, err := i.getGatewayByPoolID(rq.PoolID)
+			if err != nil {
+				return nil, err
+			}
+			return &ipam.RequestAddressResponse{
+				Address: addr,
+			}, nil
+		}
+	}
+
 	if rq.Address != "" {
 		return &ipam.RequestAddressResponse{
 			Address: rq.Address,
-			Data:    map[string]string{},
+			//Data:    map[string]string{},
 		}, nil
 	}
 
@@ -153,7 +217,7 @@ func (i *IPAM) RequestAddress(rq *ipam.RequestAddressRequest) (*ipam.RequestAddr
 	}
 
 	return &ipam.RequestAddressResponse{
-		Data:    map[string]string{},
+		//Data:    map[string]string{},
 		Address: ip,
 	}, nil
 }
@@ -216,7 +280,7 @@ func MakeIPAM(verbose bool, globalPools, localPools []string) (*IPAM, error) {
 	var localIPs, globalIPs int
 
 	for _, globalPool := range globalPools {
-		p, err := makePool(globalPool, node.Generate().Base36())
+		p, err := makePool(verbose, globalPool, node.Generate().Base36())
 		if err != nil {
 			return &i, err
 		}
@@ -225,7 +289,7 @@ func MakeIPAM(verbose bool, globalPools, localPools []string) (*IPAM, error) {
 	}
 
 	for _, localPool := range localPools {
-		p, err := makePool(localPool, node.Generate().Base36())
+		p, err := makePool(verbose, localPool, node.Generate().Base36())
 		if err != nil {
 			return &i, err
 		}
